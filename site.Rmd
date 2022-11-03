@@ -77,7 +77,7 @@ bod <- read_sheet("https://docs.google.com/spreadsheets/d/1Neholjx6hpEGEtoLRAPy5
 #### WELCOME TO THE SMCM DOCK MONITORING DASHBOARD!
 
 ```{r, echo = F, out.width = '100%', fig.align = 'center'}
-knitr::include_graphics('www/waterfront.jpg')
+#knitr::include_graphics('www/waterfront.jpg')
 ```
 
 say some stuff
@@ -99,7 +99,7 @@ Row {data-width=1000}
 ----------------------
 
 ```{r, echo = F, out.width = '30%', fig.align = 'center'}
-knitr::include_graphics('www/ysi.jpg')
+#knitr::include_graphics('www/ysi.jpg')
 ```
 
 
@@ -109,7 +109,7 @@ knitr::include_graphics('www/ysi.jpg')
 The nutrient analysis is done using a Hatch DR900 Colorimeter.
 
 ```{r, echo = F, out.width = '100%', fig.align = 'center'}
-knitr::include_graphics('www/hatch.jpg')
+#knitr::include_graphics('www/hatch.jpg')
 ```
 
 <br>
@@ -154,11 +154,11 @@ knitr::include_graphics('www/hatch.jpg')
 To filter for TSS, we use a GAST vacuum pump & water rig and 47mm Whatman GF/F circle filter pads.
 
 ```{r, echo = F, out.width = '100%', fig.align = 'center'}
-knitr::include_graphics('www/filter.jpg')
+#knitr::include_graphics('www/filter.jpg')
 ```
 <br>
 ```{r, echo=F, out.width='100%', fig.align='center'}
-knitr::include_graphics('www/TSS.jpg')
+#knitr::include_graphics('www/TSS.jpg')
 ```
 
 
