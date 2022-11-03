@@ -1,0 +1,501 @@
+---
+title: "SMCM DOCK MONITORING DASHBOARD"
+output: 
+  flexdashboard::flex_dashboard:
+    theme: yeti
+    logo: 
+    vertical_layout: scroll
+    self_contained: false
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(shiny)
+library(shinydashboard)
+library(tidyverse)
+library(googlesheets4)
+library(viridisLite)
+library(lubridate)
+library(httr)
+library(broom)
+library(rsconnect)
+source("weather.R")
+
+#Read in data
+
+ysi_data <- read_sheet("https://docs.google.com/spreadsheets/d/19E9JgnPOJ6_OhN-Het-EC9rVEH-qPRPNovM0TV-f6lQ/edit?usp=sharing") %>%
+  mutate(sample_time = format(sample_time,"%H:%M:%S"))
+
+nutrient_data <- read_sheet("https://docs.google.com/spreadsheets/d/1ywOnrc0v4ZvZrWyQ9-EZjXdom1vREmvO7BC4zhhsg1I/edit?usp=sharing") %>%
+  mutate(sample_time = format(sample_time,"%H:%M:%S"),
+         date_time = ymd_hms(paste(sample_date, sample_time))) %>%
+  pivot_longer(., 4:7, names_to = "nutrient") %>%
+  rename(mg_l = value)
+
+nutrient_dattab <- read_sheet("https://docs.google.com/spreadsheets/d/1ywOnrc0v4ZvZrWyQ9-EZjXdom1vREmvO7BC4zhhsg1I/edit?usp=sharing") %>%
+  mutate(sample_time = format(sample_time,"%H:%M:%S"),
+         date_time = ymd_hms(paste(sample_date, sample_time)))
+
+tss_data <- read_sheet("https://docs.google.com/spreadsheets/d/1givSyvd-cggWFtIxIV0yIa8yPkoEljrFQAgQekUGyvc/edit?usp=sharing") %>%
+  mutate(date = ymd(sample_date))
+
+weather_data <- read_rds("weather-smcmdock.rds") %>%
+  tidyr::separate(., datetime, c("date", "time"), sep = " ") %>%
+  mutate(day = as.Date(date)) %>%
+  group_by(day) %>% 
+  summarise(across(c(wind_avg, pressure, airtemp, rel_hum, uv_index, rain_accum, strike_ct), mean))
+
+
+lm_fun_par <- function(df) lm(-log(prop_air) ~ depth_m, data = df)
+
+licor_data <- read_sheet("https://docs.google.com/spreadsheets/d/1zz6CgaQ7AfsfxxM9EBBqt_9tstSGnJvC6InhXsO0Pm4/edit?usp=sharing") 
+
+mod_output_par <- licor_data %>%
+  select(sample_date, depth_m, prop_air) %>%
+  group_by(sample_date) %>%
+  nest() %>%
+  mutate(model = map(data, lm_fun_par),
+         tidied = map(model, tidy)) %>%
+  unnest(tidied) %>%
+  filter(term == "depth_m") %>%
+  rename(kd = estimate) %>%
+  filter(p.value <= 0.05, kd >= 0.0)
+
+kd <- mod_output_par[, c(1:2, 5)]
+
+bod <- read_sheet("https://docs.google.com/spreadsheets/d/1Neholjx6hpEGEtoLRAPy5IQS1-N5VYBqcIHfuYX2G3c/edit#gid=0") %>%
+  select(final_date, depth, treatment, do_difference_mg_l, replicate) %>%
+  group_by(final_date, depth, replicate) %>%
+  pivot_wider(names_from = treatment, values_from = do_difference_mg_l) %>%
+  rename(npp_mg_o2_l_d = light, r_mg_o2_l_d = dark) %>%
+  mutate(gpp_mg_o2_l_d = npp_mg_o2_l_d + r_mg_o2_l_d)
+```
+
+
+# OVERVIEW 
+
+#### WELCOME TO THE SMCM DOCK MONITORING DASHBOARD!
+
+```{r, echo = F, out.width = '100%', fig.align = 'center'}
+knitr::include_graphics('www/waterfront.jpg')
+```
+
+say some stuff
+
+
+# YSI SAMPLING {data-navmenu="METHODS"}
+
+**YSI procedures to measure:** <br>
+- *Dissolved oxygen* <br>
+- *Temperature* <br>
+- *Salinity* <br>
+- *pH*
+
+Some of the water quality measurements are taken using a YSI sonde. A sonde is commonly defined as a group of sensors configured together, which typically have a single recording unit or electronic data logger to record the output from the multiple sensors. Sensors/probes are available for measurement of many physical properties and chemical constituents such as temperature, specific conductance, DO, pH, etc. Each sonde has a probe guard, which protects the sensors during field use.
+
+We take measurements from the surface of the water and from the bottom. Surface readings are taken by lowering the unit into the water just below the surface and held there until the readings stabilize. To take the bottom readings, lower to the bottom and the lift so the sensor is not touching the bottom.
+
+Row {data-width=1000}
+----------------------
+
+```{r, echo = F, out.width = '30%', fig.align = 'center'}
+knitr::include_graphics('www/ysi.jpg')
+```
+
+
+# NUTRIENT SAMPLING {data-navmenu="METHODS"}
+
+## Column {.sidebar}
+The nutrient analysis is done using a Hatch DR900 Colorimeter.
+
+```{r, echo = F, out.width = '100%', fig.align = 'center'}
+knitr::include_graphics('www/hatch.jpg')
+```
+
+<br>
+
+ Info about the hatch colorimeter
+
+## Column {data-width='1000'}
+
+**Nitrate and phosphate analysis**
+
+1. Sample rinse sample clean bottle three times, then collect water.
+2. Turn the colorimeter on. Select Options, Favorites/User Programs,  351 N, Nitrate LR. Select Start
+3. Prepare the sample: fill a sample cell with 10 ml of sample water.
+4. Put on latex/nitrile gloves. Add the contents of one Nitraver 6 NO3 powder pillow and put the stopper on the cell. 
+5. Select Options, Start Timer, Timer 1: 1:00 and shake the cell vigorously until the timer goes off. Some powder may not dissolve. Undissolved powder will not affect results. Start Timer 5: 5:00 to let the reagent react with the sample.
+6. During this time, prepare the blank. Fill another cell with sample water to the 10 ml line and make sure the sample cell is clean. 
+7. Remove the cap from the colorimeter, place the cell into the cell holder, and select Zero. The display should show 0.0 mg/l NO3.  
+8. Within 1 minute after the timer expires, place the prepared sample cell into the cell holder and select Read. The display will show the sample NO3 concentration in mg/l.
+9. Throw away reagent pillow foil, dump prepared sample into the NO3 waste bottle, and rinse cells well with clean water.
+
+<br>
+
+**PO4 analysis**
+
+1. Sample rinse sample clean bottle three times, then collect water.
+2. Turn the colorimeter on. Select Options, Favorites/User Programs, 490 P React. PV. Select Start
+3. Prepare the sample: fill a sample cell with 10 ml of sample water.
+4. Put on latex/nitrile gloves. Add the contents of one PO4 powder pillows and put the stopper on the cell. Immediately shake vigorously for 20-30 seconds.
+5. Select Options, Start Timer, Timer 1: 2:00 and set the sample down. 
+6. During this time, prepare the blank. Fill another cell with sample water to the 10 ml line and make sure the sample cell is clean. 
+7. Remove the cap from the colorimeter, place the cell into the cell holder, and select Zero. The display should show 0.0 mg/l PO4.  
+8. When the timer expires, place the prepared sample cell into the cell holder and select Read. The display will show the sample PO4 concentration in mg/l.
+9. Throw away reagent pillow foil, dump prepared sample into the PO4 waste bottle, and rinse cells well with clean water.
+
+
+# TSS FILTERING {data-navmenu="METHODS"}
+
+## Column {.sidebar}
+
+**TSS Filtering**
+
+To filter for TSS, we use a GAST vacuum pump & water rig and 47mm Whatman GF/F circle filter pads.
+
+```{r, echo = F, out.width = '100%', fig.align = 'center'}
+knitr::include_graphics('www/filter.jpg')
+```
+<br>
+```{r, echo=F, out.width='100%', fig.align='center'}
+knitr::include_graphics('www/TSS.jpg')
+```
+
+
+## Column {data-width='1000'}
+
+**Procedures**
+
+1. To collect a sample, rinse a 1-l nalgene container three times with sample water, then fill with sample water.
+2. Label a foil packet using a sharpie with the location, date and time, filter number, and volume filtered. 
+3. Center a prenumbered, combusted, weighed 47mm GFF Filter Pad on the filter holder (frit) number side down if number is visible. Secure the filtration funnel to the frit.
+4. Rinse a graduated cylinder three times with sample water.
+5. Measuring with a graduated cylinder and a funnel, pour 200 mL of sample water into the filter holder. Ensure it is tight before pouring to avoid spills. Clogging the filter pad is not recommended or necessary. 
+6. Check that the two hoses–from the vacuum pump and from the filtration rig– are securely clipped into the Nalgene 20 liter jug. Check the origin of each hose, and DO NOT plug the vacuum hose into the entrance labeled for water. 
+7. Turn on the pump using the labeled switch on the right-hand side of the machine. 
+8. Rinse the filter funnel unit twice with deionized (DI) water after the initial volume has filtered through the pad. This step is VERY IMPORTANT because it rinses out the salt. 
+9. Turn off the pump before unscrewing the filtration tunnel and removing the filter pad. Using 2 forceps and without touching the material on the filter, fold the filter in half with the filtered material on the inside of the fold. Remove the folded pad from the filtration unit with forceps and place inside your prelabeled aluminum foil packet (see example to the right). Do not touch the filter pad or the inside of the foil pouch with your fingers.  Sometimes the folded filter pad will pop open as you are attempting to place it in the foil packet.  If this occurs, use forceps to hold the folded filter pad in half and then fold the aluminum packet closed.  Make sure that only the outside of the folded pad (area without filtered material directly on it or visible) is touching the foil. If you have not already done so, fold all sides of the aluminum packet closed. 
+10. Record the date, time, location, filter number, and total volume filtered on each foil packet and on the data sheet.
+11. Label a zip lock freezer bag using a black sharpie marker with the date and “SMCM docks”, place the packet into the freezer bag, and store on ice until freezing.
+12. Unclip the water and vacuum hoses from the jug. Some water may come out of the water hose. Place the tip of the hose in a small container to avoid spills.
+13. Unscrew the top from the jug. Both ports will be visible on the underside, one with a short length of tubing. Use a soft sponge and deionized water to clean the outside of the tube, but do not allow water to drip on the vacuum port.
+14. Dispose of the processed sample water, and rinse the inside of the 20 liter jug with deionized water. This cleaning is only necessary after all of a day’s samples have been processed, and does not need to be done between sites. Allow all parts of the system to dry overnight before use the next day. 
+
+# LICOR {data-navmenu="METHODS"}
+
+Licor is used to take a light profile of the water column. 
+
+# ECOSYSTEM PRODUCTION {data-navmenu="METHODS"}
+
+## Column {.sidebar data-width=325}
+
+**Ecosystem Production**
+
+One technique used to measure ecosystem production is the light/dark bottle method. In clear-glass "light" bottles, we can incubate water from the estuary over a period of time to indirectly measure photosynthesis, or gross primary productivity. If photosynthesis is greater than respiration in the light bottle, then O2 will increase over time. However, whole-community respiration (R) is still occurring in the light bottles, because all organisms living in the water are respiring. This means that a light bottle gives you an estimate of net ecosystem productivity (NEP).
+
+Using another set of "dark" bottles (painted to prevent light from entering), we can fill them with river water and let them incubate over time. Since photosynthesis is blocked in these bottles, O2 declines through time solely as a result of decomposition and respiration of carbon compounds floating in the water (by bacteria, plankton, macroinvertebrates). Thus, the dark bottles give us a rate of total ecosystem respiration through time (R).
+
+The difference between the final oxygen concentrations between the light and dark bottles is thus a measure of total photosynthesis, or gross primary production (GPP). Therefore, with some relatively simple measurements of O2, we are capable of teasing apart the individual components of estuary metabolism.
+
+## Column {data-width=1000}
+
+**Procedure**
+
+1. Take YSI readings at both the surface and bottom. Be sure to measure the depth of the water column. Record these observations on your datasheet.
+2. Secure a standard garden hose to the provided attachment of the portable utility pump. Using a line marked with depth, lower the pump beneath the surface, and turn on using the button beneath the handle. DO NOT DRY RUN THE PUMP.  
+3. Lower the pump carefully until it just barely touches the bottom, then lift it up so that it is not touching the bottom. Allow the water to run for a few seconds to flush any sediment out of the pump.
+4. Fill one light and one dark BOD bottle with bottom sample water by inserting the tip of the hose into the bottom. Let the water overflow for several minutes to rinse the bottle and force out any air bubbles. Keep filling the bottle as you withdraw the tube so that the bottle is completely filled. Place the stopper on the bottle.
+5. Repeat for your light bottle. 
+6. Take both bottles to the BOD probe station. Insert the BOD probe into the top of the bottle, turn the stirrer on with the red switch, and take an initial DO measurement. Turn the switch back off before removing the probe. Repeat for your other bottle.
+7. Using the carabiner clips, attach the bottom light and dark bottles to the lowest loop of the pre-prepared line, closer to the anchor than the buoy. This line will allow the bottles to sit at their initial depth, and temperature fluctuations inside the bottles will match their natural environment.
+8. Collect water from the middle of the water column (calculated from actual depth recorded during YSI stage) and repeat the steps above. Carefully lift the line out of the water, secure both bottles to the mid-line loop using carabiners, AND attach the wave gauge between the bottles using a carabiner. This will measure the change in bottle depth during the tidal cycle. 
+9. Collect water from just below the surface of the water column and repeat the steps above. Carefully lift the line out of the water, secure both bottles to the surface loop using carabiners, and lower back into the water.
+10. Using a boat hook, lift the entire line (from just below the buoy) and move it approximately five feet from the dock. This is to ensure the bottles will not fall under the dock’s shadow, altering photosynthesis and production measurements. 
+11. Allow the bottles to incubate for 4 hours.
+12. Return after the determined time period, and use the boat hook to pull the entire line back within arm’s length of the dock. 
+13. Lift the buoy and top third of the line onto the dock, and unclip the surface light and dark bottles. Lower the line back into the water to keep the middle and bottom bottles to keep them at their environmental temperature, which prevents last-minute P and R changes. 
+14. Take both bottles to the BOD probe station, and repeat the instructions in step 6 to find the final DO measurement.
+15. Repeat steps 13 and 14 with the middle and bottom water bottles, lifting the full anchor and line onto the dock once the bottom bottles have been removed.
+
+
+# YSI {data-navmenu="VISUALIZATIONS"}
+
+## Column {.sidebar}
+
+**YSI**
+
+```{r}
+# creating a sidebar where the user can choose which country they want to view
+select_values <- colnames(ysi_data)
+select_values <- select_values[select_values %in% 
+                                 c('salinity', "ph", "temp_c", "do_percent", "do_mg_l", "salinity")]
+
+selectInput(
+    "y_var",
+    label = "Y Variable",
+    choices = select_values,
+    selected = 'sample_date')
+
+  dateRangeInput("sample_date",
+                 "Select a Date Range",
+                 start = "2022-05-25")
+```
+
+## Column {data-width="1000"}
+
+```{r}
+renderPlot({
+  ysi_data %>%
+    filter(sample_date >= as.Date(input$sample_date[1]),
+           sample_date <= as.Date(input$sample_date[2])) %>%
+    ggplot(.,aes_string(x = "sample_date", y = input$y_var, color = "depth_m")) +
+    geom_point(size = 2.5) +
+    geom_line() +
+    labs(x = "") +
+    theme_linedraw() +
+    scale_color_viridis_d(begin = 0.2, end = 0.8)
+})
+
+
+DT::renderDataTable({
+    
+    
+    ysi_table <- ysi_data %>% 
+      select(sample_date, salinity, ph, temp_c, do_percent, do_mg_l)
+    
+    
+    DT::datatable(ysi_table,
+                  extensions = "Scroller",
+                  filter = "top", options = list(
+                    deferRender = TRUE,
+                    scrollY = 200,
+                    scroller = TRUE
+                  ),
+                  rownames = FALSE,
+                  colnames = c("Date",
+                               "Salinity",
+                               "ph",
+                               "Temperature (ºC)",
+                               "DO Percent",
+                               "DO (mg/l)")
+    )
+    
+  }) 
+```
+
+# NUTRIENTS {data-navmenu="VISUALIZATIONS"}
+
+## Column {.sidebar}
+
+**Nutrients**
+
+```{r}
+dateRangeInput("date_time",
+                 "Select a Date Range",
+                 start = "2022-06-28")
+```
+
+## Column {data-width="1000"}
+
+```{r}
+renderPlot({
+  nutrient_data %>%
+    filter(date_time >= as.Date(input$date_time[1]),
+           date_time <= as.Date(input$date_time[2])) %>%
+    ggplot(., aes_string(x="date_time", y="mg_l", color = "nutrient")) +
+      geom_point(size = 2.5) +
+      geom_line() +
+      labs(x="", y="mg/l") +
+      theme_linedraw() +
+    scale_color_viridis_d(begin = 0.2, end = 0.8)
+    
+  })
+  
+ DT::renderDataTable({
+    
+    nutrient_tab <- nutrient_dattab %>% 
+      select(date_time, nh3_mg_l, no3_l_mg_l, no3_m_mg_l, po4_mg_l)
+    
+    
+    DT::datatable(nutrient_tab,
+                  extensions = "Scroller",
+                  filter = "top", options = list(
+                    deferRender = TRUE,
+                    scrollY = 200,
+                    scroller = TRUE
+                  ),
+                  rownames = FALSE,
+                  colnames = c("Date",
+                               "NH3",
+                               "NO3 low",
+                               "NO3 high", 
+                               "PO4")
+    )
+    
+  }) 
+```
+
+
+# TSS {data-navmenu="VISUALIZATIONS"}
+
+## Column {.sidebar}
+
+**Total Suspended Solids**
+
+```{r}
+dateRangeInput("date",
+                 "Select a Date Range",
+                 start = "2022-05-25")
+```
+
+TSS is the amount of total suspended solids in the water, measured in mg/L. These solids are particles that are large enough to not pass through a filter.
+
+*Total Suspended Solids (mg/L) = (weight before filtering – weight after filtering) / sample volume in litres*
+
+## Column {data-width="1000"}
+```{r}
+renderPlot({
+  tss_data %>%
+    filter(date >= as.Date(input$date[1]),
+           date <= as.Date(input$date[2])) %>%
+    ggplot(., aes_string(x="date", y="mg_tss")) +
+      geom_point(size = 2.5) +
+      geom_line() +
+      labs(x="", y="mg total suspended solids") +
+      theme_linedraw() +
+    scale_color_viridis_d(begin = 0.2, end = 0.8)
+    
+  })
+  
+ DT::renderDataTable({
+    
+    tss_tab <- tss_data %>% 
+      select(date, mg_tss)
+    
+    
+    DT::datatable(tss_tab,
+                  extensions = "Scroller",
+                  filter = "top", options = list(
+                    deferRender = TRUE,
+                    scrollY = 200,
+                    scroller = TRUE
+                  ),
+                  rownames = FALSE,
+                  colnames = c("Date",
+                               "mg TSS")
+    )
+    
+  }) 
+```
+
+# LICOR {data-navmenu="VISUALIZATIONS"}
+
+## Column {.sidebar}
+
+**Licor**
+
+```{r}
+dateRangeInput("sampledate",
+                 "Select a Date Range",
+                 start = "2022-05-25")
+```
+
+## Column {data-width="1000"}
+
+```{r}
+renderPlot({
+  kd %>%
+    rename(sampledate = sample_date) %>%
+    filter(sampledate >= as.Date(input$sampledate[1]),
+           sampledate <= as.Date(input$sampledate[2])) %>%
+  ggplot(., aes_string(x = "sampledate", y = "kd")) +
+  geom_bar(stat = "identity", fill = "#21918c") +
+    labs(x = "", y = expression("K"[d]~"(m"^-1*")")) +
+  theme_linedraw()
+})
+```
+
+# ECOSYSTEM PRODUCTION {data-navmenu="VISUALIZATIONS"}
+
+## Column {.sidebar}
+
+**Ecosystem Production**
+
+```{r}
+dateRangeInput("final_date",
+                 "Select a Date Range",
+                 start = "2022-06-13")
+```
+
+<br>
+
+**Photosynthesis**: 6CO2 + 6H2O ⇒ C6H12O6 + 6O2 <br>
+<br>
+**Aerobic respiration**: C6H12O6 + 6O2 ⇒ 6CO2 + 6H2O
+
+In most ecosystems, photosynthesis and respiration are occurring simultaneously. Photosynthesis adds O2 to the water, and respiration removes it. These familiar photosynthesis and aerobic respiration equations show that by measuring changes in O2, we can determine the rates of photosynthesis and respiration in an ecosystem.
+
+## Column {data-width="1000"}
+
+```{r}
+renderPlot({
+  bod %>%
+    filter(final_date >= as.Date(input$final_date[1]),
+           final_date <= as.Date(input$final_date[2]),
+           replicate == "a") %>%
+ggplot(., aes_string(x = "final_date", y = "gpp_mg_o2_l_d", color = "depth")) +
+  geom_point(size = 2.5) +
+  geom_line() +
+  labs(x = "") +
+  theme_linedraw() +
+  scale_colour_viridis_d(begin = 0.2, end = 0.7)
+  })
+```
+
+
+# CURRENT WEATHER {data-navmenu="WEATHER"}
+
+## Column {.sidebar}
+
+
+## Column {data-width="1000"}
+```{r, out.extra='style="border: 1px solid #464646;" allowfullscreen="" allow="autoplay"'}
+knitr::include_url("https://tempestwx.com/station/69060/", height = 800)
+```
+
+# WEATHER HISTORY {data-navmenu="WEATHER"}
+
+## Column {.sidebar}
+
+```{r}
+weather_select <- colnames(weather_data)
+weather_select <- weather_select[weather_select %in% 
+                                 c('wind_avg', "pressure", "airtemp", "rel_hum", "uv_index", "rain_accum", "strike_ct")]
+  
+  selectInput(
+    "y_variable",
+    label = "Y Variable",
+    choices = weather_select,
+    selected = 'day')
+  
+  dateRangeInput("day",
+                 "Select a Date Range",
+                 start = "2022-05-25")
+```
+
+## Column {data-width="1000"}
+
+```{r}
+renderPlot({
+  weather_data %>%
+    filter(day >= as.Date(input$day[1]),
+           day <= as.Date(input$day[2])) %>%
+ggplot(., aes_string(x = "day", y = input$y_variable)) +
+  geom_point(size = 2.5, color = "#21918c") +
+  geom_line(color = "#21918c") +
+  labs(x = "") +
+  theme_linedraw()
+  })
+```
+
