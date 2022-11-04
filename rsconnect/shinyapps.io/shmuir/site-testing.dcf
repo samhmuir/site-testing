@@ -1,0 +1,11 @@
+name: site-testing
+title:
+username:
+account: shmuir
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7520343
+bundleId: 6473942
+url: https://shmuir.shinyapps.io/site-testing/
+when: 1667535380.57058
+lastSyncTime: 1667535380.57061

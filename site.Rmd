@@ -342,7 +342,7 @@ renderPlot({
 ## Column {.sidebar}
 
 **Total Suspended Solids**
-
+∞
 ```{r}
 dateRangeInput("date",
                  "Select a Date Range",
